@@ -1,21 +1,114 @@
 services:
   postgres:
-    image: postgres:17
-    container_name: commerce-postgres
-    restart: unless-stopped
+    image: postgres:16-alpine
+    container_name: transactional-outbox-postgres
     environment:
-      POSTGRES_DB: commerce
-      POSTGRES_USER: commerce_user
-      POSTGRES_PASSWORD: commerce_password
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: outbox_demo
     ports:
       - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U commerce_user -d commerce"]
+      test: ["CMD-SHELL", "pg_isready -U app -d outbox_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: transactional-outbox-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"
+      - "9644:9644"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy|true' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  kafka-connect:
+    image: quay.io/debezium/connect:2.7
+    container_name: transactional-outbox-connect
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:9092
+      GROUP_ID: transactional-outbox-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: transactional-outbox-kafka-ui
+    depends_on:
+      - redpanda
+      - kafka-connect
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: redpanda:9092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+    ports:
+      - "8081:8080"
+
+  debezium-init:
+    image: curlimages/curl:8.10.1
+    container_name: transactional-outbox-debezium-init
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./debezium/postgres-outbox-connector.json:/connector.json:ro
+    command:
+      - sh
+      - -c
+      - |
+        echo "Registering Debezium connector..."
+
+        curl -fsS -X PUT http://kafka-connect:8083/connectors/postgres-outbox-connector/config \
+          -H "Content-Type: application/json" \
+          --data @/connector.json
+
+        echo "Debezium connector registered."
+    restart: "no"
 
 volumes:
   postgres_data:
