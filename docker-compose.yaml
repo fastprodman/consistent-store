@@ -116,11 +116,11 @@ services:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: redpanda:9092
 
-  notification-consumer:
+  order-notifier:
     build:
       context: .
-      dockerfile: cmd/notification-consumer/Dockerfile
-    container_name: transactional-outbox-notification-consumer
+      dockerfile: cmd/order-notifier/Dockerfile
+    container_name: transactional-outbox-order-notifier
     depends_on:
       postgres:
         condition: service_healthy
