@@ -89,6 +89,47 @@ services:
     ports:
       - "8081:8080"
 
+  order-service:
+    build:
+      context: .
+      dockerfile: cmd/order-service/Dockerfile
+    container_name: transactional-outbox-order-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
+    ports:
+      - "8080:8080"
+
+  analytics-consumer:
+    build:
+      context: .
+      dockerfile: cmd/analytics-consumer/Dockerfile
+    container_name: transactional-outbox-analytics-consumer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
+      KAFKA_BROKER: redpanda:9092
+
+  notification-consumer:
+    build:
+      context: .
+      dockerfile: cmd/notification-consumer/Dockerfile
+    container_name: transactional-outbox-notification-consumer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
+      KAFKA_BROKER: redpanda:9092
+
   debezium-init:
     image: curlimages/curl:8.10.1
     container_name: transactional-outbox-debezium-init
