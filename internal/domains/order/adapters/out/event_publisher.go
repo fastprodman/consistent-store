@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	"github.com/fastprodman/consistent-store/internal/domains/order/entities"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/google/uuid"
 )
 

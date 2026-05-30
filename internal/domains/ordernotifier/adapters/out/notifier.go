@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	"github.com/fastprodman/consistent-store/internal/domains/ordernotifier/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/ports/out"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 )
 
 type Notifier struct {

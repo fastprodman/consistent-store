@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	notifierin "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/adapters/in"
 	notifierout "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/adapters/out"
 	notifierservices "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/services"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
 

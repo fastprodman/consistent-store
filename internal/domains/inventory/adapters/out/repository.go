@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	"github.com/fastprodman/consistent-store/internal/domains/inventory/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/inventory/ports/out"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 )
 
 type Repository struct {

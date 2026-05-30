@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	"github.com/fastprodman/consistent-store/internal/domains/analytics/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/analytics/ports/out"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 )
 
 const consumerName = "analytics-consumer"

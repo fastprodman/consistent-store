@@ -8,7 +8,7 @@ import (
 
 	"github.com/fastprodman/consistent-store/internal/domains/ordernotifier/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/ports/in"
-	"github.com/fastprodman/consistent-store/internal/events"
+	"github.com/fastprodman/consistent-store/internal/shared/events"
 	"github.com/segmentio/kafka-go"
 )
 

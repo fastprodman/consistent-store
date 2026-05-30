@@ -8,13 +8,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	inventoryhttp "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/in"
 	inventoryout "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/out"
 	inventoryservices "github.com/fastprodman/consistent-store/internal/domains/inventory/services"
 	orderhttp "github.com/fastprodman/consistent-store/internal/domains/order/adapters/in"
 	orderout "github.com/fastprodman/consistent-store/internal/domains/order/adapters/out"
 	orderservices "github.com/fastprodman/consistent-store/internal/domains/order/services"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
 

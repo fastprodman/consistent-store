@@ -3,9 +3,9 @@ package out
 import (
 	"context"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	"github.com/fastprodman/consistent-store/internal/domains/order/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/order/ports/out"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/google/uuid"
 )
 

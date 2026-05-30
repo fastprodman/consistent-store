@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fastprodman/consistent-store/internal/db"
 	analyticsin "github.com/fastprodman/consistent-store/internal/domains/analytics/adapters/in"
 	analyticsout "github.com/fastprodman/consistent-store/internal/domains/analytics/adapters/out"
 	analyticsservices "github.com/fastprodman/consistent-store/internal/domains/analytics/services"
+	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
 
