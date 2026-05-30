@@ -1,32 +1,32 @@
-package analytics
+package out
 
 import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 
 	"github.com/fastprodman/consistent-store/internal/db"
-	"github.com/google/uuid"
+	"github.com/fastprodman/consistent-store/internal/domains/analytics/entities"
+	portsout "github.com/fastprodman/consistent-store/internal/domains/analytics/ports/out"
 )
 
-const ConsumerName = "analytics-consumer"
+const consumerName = "analytics-consumer"
 
-type Repository struct {
+type Projector struct {
 	db *db.Provider
 }
 
-func NewRepository(db *db.Provider) *Repository {
-	return &Repository{db: db}
+var _ portsout.Projector = (*Projector)(nil)
+
+func NewProjector(db *db.Provider) *Projector {
+	return &Projector{db: db}
 }
 
-func (r *Repository) ApplyOrderCreated(
+func (p *Projector) ApplyOrderCreated(
 	ctx context.Context,
-	eventID uuid.UUID,
-	createdAt time.Time,
-	totalCents int,
-) (inserted bool, err error) {
-	exec := r.db.Executor(ctx)
+	event entities.OrderCreatedEvent,
+) (applied bool, err error) {
+	exec := p.db.Executor(ctx)
 
 	var didInsert bool
 
@@ -38,7 +38,7 @@ func (r *Repository) ApplyOrderCreated(
 		VALUES ($1, $2)
 		ON CONFLICT (consumer_name, event_id) DO NOTHING
 		RETURNING true
-	`, ConsumerName, eventID).Scan(&didInsert)
+	`, consumerName, event.EventID()).Scan(&didInsert)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -48,7 +48,7 @@ func (r *Repository) ApplyOrderCreated(
 		return false, err
 	}
 
-	analyticsDate := createdAt.UTC().Format("2006-01-02")
+	analyticsDate := event.CreatedAt().UTC().Format("2006-01-02")
 
 	_, err = exec.ExecContext(ctx, `
 		INSERT INTO order_analytics (
@@ -61,7 +61,7 @@ func (r *Repository) ApplyOrderCreated(
 		DO UPDATE SET
 			order_count = order_analytics.order_count + 1,
 			revenue_cents = order_analytics.revenue_cents + EXCLUDED.revenue_cents
-	`, analyticsDate, totalCents)
+	`, analyticsDate, event.TotalCents())
 
 	if err != nil {
 		return false, err
