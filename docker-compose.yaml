@@ -112,6 +112,8 @@ services:
         condition: service_healthy
       redpanda:
         condition: service_started
+      debezium-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: redpanda:9092
@@ -126,6 +128,8 @@ services:
         condition: service_healthy
       redpanda:
         condition: service_started
+      debezium-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: redpanda:9092
