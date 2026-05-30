@@ -1,4 +1,4 @@
-package httpapi
+package in
 
 import (
 	"encoding/json"
@@ -6,21 +6,24 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fastprodman/consistent-store/internal/inventory"
-	"github.com/fastprodman/consistent-store/internal/orders"
+	inventoryentities "github.com/fastprodman/consistent-store/internal/domains/inventory/entities"
+	"github.com/fastprodman/consistent-store/internal/domains/order/entities"
+	portsin "github.com/fastprodman/consistent-store/internal/domains/order/ports/in"
+	portsout "github.com/fastprodman/consistent-store/internal/domains/order/ports/out"
+	orderservices "github.com/fastprodman/consistent-store/internal/domains/order/services"
 	"github.com/google/uuid"
 )
 
-type OrderHandler struct {
-	ordersService *orders.Service
-	ordersRepo    *orders.Repository
+type HTTPHandler struct {
+	ordersService portsin.Service
+	ordersRepo    portsout.Repository
 }
 
-func NewOrderHandler(
-	ordersService *orders.Service,
-	ordersRepo *orders.Repository,
-) *OrderHandler {
-	return &OrderHandler{
+func NewHTTPHandler(
+	ordersService portsin.Service,
+	ordersRepo portsout.Repository,
+) *HTTPHandler {
+	return &HTTPHandler{
 		ordersService: ordersService,
 		ordersRepo:    ordersRepo,
 	}
@@ -58,7 +61,7 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	var req createOrderRequest
 
 	decoder := json.NewDecoder(r.Body)
@@ -71,13 +74,13 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := orders.CreateOrderCommand{
+	cmd := portsin.CreateOrderCommand{
 		CustomerID: req.CustomerID,
-		Items:      make([]orders.CreateOrderItem, 0, len(req.Items)),
+		Items:      make([]portsin.CreateOrderItem, 0, len(req.Items)),
 	}
 
 	for _, item := range req.Items {
-		cmd.Items = append(cmd.Items, orders.CreateOrderItem{
+		cmd.Items = append(cmd.Items, portsin.CreateOrderItem{
 			SKU:      item.SKU,
 			Quantity: item.Quantity,
 		})
@@ -88,12 +91,12 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 
 		switch {
-		case errors.Is(err, orders.ErrEmptyCustomerID),
-			errors.Is(err, orders.ErrEmptyItems),
-			errors.Is(err, inventory.ErrInvalidQuantity):
+		case errors.Is(err, orderservices.ErrEmptyCustomerID),
+			errors.Is(err, orderservices.ErrEmptyItems),
+			errors.Is(err, inventoryentities.ErrInvalidQuantity):
 			status = http.StatusBadRequest
 
-		case errors.Is(err, inventory.ErrInsufficientInventory):
+		case errors.Is(err, inventoryentities.ErrInsufficientInventory):
 			status = http.StatusConflict
 		}
 
@@ -108,7 +111,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	rawID := strings.TrimPrefix(r.URL.Path, "/orders/")
 	if rawID == "" || rawID == r.URL.Path {
 		writeJSON(w, http.StatusNotFound, errorResponse{
@@ -141,23 +144,27 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(w, http.StatusOK, newOrderResponse(order, items))
+}
+
+func newOrderResponse(order entities.Order, items []entities.OrderItem) orderResponse {
 	resp := orderResponse{
-		ID:         order.ID.String(),
-		CustomerID: order.CustomerID,
-		Status:     order.Status,
-		TotalCents: order.TotalCents,
+		ID:         order.ID().String(),
+		CustomerID: order.CustomerID(),
+		Status:     string(order.Status()),
+		TotalCents: order.TotalCents(),
 		Items:      make([]orderItemResponse, 0, len(items)),
 	}
 
 	for _, item := range items {
 		resp.Items = append(resp.Items, orderItemResponse{
-			SKU:        item.SKU,
-			Quantity:   item.Quantity,
-			PriceCents: item.PriceCents,
+			SKU:        item.SKU(),
+			Quantity:   item.Quantity(),
+			PriceCents: item.PriceCents(),
 		})
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	return resp
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

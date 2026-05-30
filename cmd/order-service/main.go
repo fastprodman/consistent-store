@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/fastprodman/consistent-store/internal/db"
-	"github.com/fastprodman/consistent-store/internal/httpapi"
-	"github.com/fastprodman/consistent-store/internal/inventory"
-	"github.com/fastprodman/consistent-store/internal/orders"
-	"github.com/fastprodman/consistent-store/internal/outbox"
+	inventoryhttp "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/in"
+	inventoryout "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/out"
+	inventoryservices "github.com/fastprodman/consistent-store/internal/domains/inventory/services"
+	orderhttp "github.com/fastprodman/consistent-store/internal/domains/order/adapters/in"
+	orderout "github.com/fastprodman/consistent-store/internal/domains/order/adapters/out"
+	orderservices "github.com/fastprodman/consistent-store/internal/domains/order/services"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
 
@@ -37,19 +39,21 @@ func main() {
 
 	provider := db.NewProvider(database, txStore)
 
-	inventoryRepo := inventory.NewRepository(provider)
-	orderRepo := orders.NewRepository(provider)
-	outboxRepo := outbox.NewRepository(provider)
+	domainInventoryRepo := inventoryout.NewRepository(provider)
+	inventoryQueryService := inventoryservices.NewQueryService(domainInventoryRepo)
+	inventoryReservationService := inventoryservices.NewReservationService(domainInventoryRepo)
+	orderRepo := orderout.NewRepository(provider)
+	orderEventPublisher := orderout.NewOutboxEventPublisher(provider)
 
-	orderService := orders.NewService(
+	orderService := orderservices.NewService(
 		txStore,
 		orderRepo,
-		inventoryRepo,
-		outboxRepo,
+		inventoryReservationService,
+		orderEventPublisher,
 	)
 
-	orderHandler := httpapi.NewOrderHandler(orderService, orderRepo)
-	inventoryHandler := httpapi.NewInventoryHandler(inventoryRepo)
+	orderHandler := orderhttp.NewHTTPHandler(orderService, orderRepo)
+	inventoryHandler := inventoryhttp.NewHTTPHandler(inventoryQueryService)
 
 	mux := http.NewServeMux()
 
