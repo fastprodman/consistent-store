@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/fastprodman/consistent-store/internal/domains/ordernotifier/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/ports/in"
@@ -20,7 +21,7 @@ type KafkaConsumer struct {
 func NewKafkaConsumer(broker string, handler portsin.OrderCreatedHandler) *KafkaConsumer {
 	return &KafkaConsumer{
 		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:        []string{broker},
+			Brokers:        brokersFromString(broker),
 			Topic:          "order.events",
 			GroupID:        "order-notifier",
 			MinBytes:       1,
@@ -30,6 +31,20 @@ func NewKafkaConsumer(broker string, handler portsin.OrderCreatedHandler) *Kafka
 		}),
 		handler: handler,
 	}
+}
+
+func brokersFromString(value string) []string {
+	parts := strings.Split(value, ",")
+	brokers := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		broker := strings.TrimSpace(part)
+		if broker != "" {
+			brokers = append(brokers, broker)
+		}
+	}
+
+	return brokers
 }
 
 func (c *KafkaConsumer) Close() error {
