@@ -28,7 +28,6 @@ func (p *OutboxEventPublisher) PublishOrderNotificationSent(
 ) error {
 	payload, err := json.Marshal(events.OrderNotificationSent{
 		EventID:    event.EventID(),
-		EventType:  event.EventType(),
 		OrderID:    event.OrderID(),
 		CustomerID: event.CustomerID(),
 		SentAt:     event.SentAt(),

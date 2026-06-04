@@ -24,7 +24,7 @@ id             = 9dfc4ec8-6d62-4d29-8c49-b92c0f8e5a61
 aggregate_type = order
 aggregate_id   = 5004bdd4-16b6-4e5a-ae6c-f66646e76124
 event_type     = OrderCreated
-payload         = {"event_id":"...","event_type":"OrderCreated","order_id":"..."}
+payload         = {"event_id":"...","order_id":"..."}
 ```
 
 ## Debezium Connector
@@ -53,7 +53,7 @@ The outbox transform is enabled here:
 | `aggregate_type` | Used to choose the Kafka topic | `transforms.outbox.route.by.field` |
 | `aggregate_id` | Kafka message key | `transforms.outbox.table.field.event.key` |
 | `payload` | Kafka message value | `transforms.outbox.table.field.event.payload` |
-| `event_type` | Event type metadata/header used by EventRouter | `transforms.outbox.table.field.event.type` |
+| `event_type` | Kafka message header named `event_type` | `transforms.outbox.table.fields.additional.placement` |
 | `id` | Event id metadata/header used by EventRouter | `transforms.outbox.table.field.event.id` |
 
 Relevant config:
@@ -63,6 +63,7 @@ Relevant config:
 "transforms.outbox.table.field.event.key": "aggregate_id",
 "transforms.outbox.table.field.event.payload": "payload",
 "transforms.outbox.table.field.event.type": "event_type",
+"transforms.outbox.table.fields.additional.placement": "event_type:header:event_type",
 
 "transforms.outbox.route.by.field": "aggregate_type",
 "transforms.outbox.route.topic.replacement": "${routedByValue}.events",
@@ -113,6 +114,40 @@ Kafka key = customer id
 
 Kafka uses the key for partitioning, so events for the same aggregate go to the same partition and preserve order relative to that aggregate.
 
+## Kafka Headers
+
+This setting places the outbox `event_type` column into a Kafka message header:
+
+```json
+"transforms.outbox.table.fields.additional.placement": "event_type:header:event_type"
+```
+
+The syntax is:
+
+```text
+<outbox column>:header:<Kafka header name>
+```
+
+So:
+
+```text
+outbox_events.event_type -> Kafka header event_type
+```
+
+For example:
+
+```text
+event_type = OrderCreated
+```
+
+becomes:
+
+```text
+Kafka header event_type = OrderCreated
+```
+
+The event type is intentionally not duplicated inside the JSON message body.
+
 ## Kafka Value
 
 This setting selects the outbox payload:
@@ -132,7 +167,6 @@ So if `payload` is:
 ```json
 {
   "event_id": "9dfc4ec8-6d62-4d29-8c49-b92c0f8e5a61",
-  "event_type": "OrderCreated",
   "order_id": "5004bdd4-16b6-4e5a-ae6c-f66646e76124",
   "customer_id": "customer-001",
   "total_cents": 3000
@@ -157,6 +191,7 @@ Kafka message:
 ```text
 topic = order.events
 key   = 5004bdd4-16b6-4e5a-ae6c-f66646e76124
+header event_type = OrderCreated
 value = payload JSON
 ```
 
@@ -174,6 +209,7 @@ Kafka message:
 ```text
 topic = customer.events
 key   = customer-001
+header event_type = CustomerCreated
 value = payload JSON
 ```
 
@@ -203,23 +239,23 @@ order.events
 customer.events
 ```
 
-Then it reads `event_type` from the message value and chooses what to do:
+Then it reads the Kafka `event_type` header and chooses what to do:
 
 ```text
 topic = order.events
-event_type = OrderCreated
+header event_type = OrderCreated
 -> send/log order notification
 ```
 
 ```text
 topic = order.events
-event_type = OrderNotificationSent
+header event_type = OrderNotificationSent
 -> ignore, because notification-service emitted this event itself
 ```
 
 ```text
 topic = customer.events
-event_type = CustomerCreated
+header event_type = CustomerCreated
 -> send/log customer notification
 ```
 

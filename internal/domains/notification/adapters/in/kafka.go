@@ -105,10 +105,7 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 }
 
 func (c *KafkaConsumer) handleOrderEvent(ctx context.Context, msg kafka.Message) error {
-	eventType, err := messageEventType(msg.Value)
-	if err != nil {
-		return err
-	}
+	eventType := messageEventType(msg.Headers)
 
 	switch eventType {
 	case orderCreatedEventType:
@@ -123,10 +120,7 @@ func (c *KafkaConsumer) handleOrderEvent(ctx context.Context, msg kafka.Message)
 }
 
 func (c *KafkaConsumer) handleCustomerEvent(ctx context.Context, msg kafka.Message) error {
-	eventType, err := messageEventType(msg.Value)
-	if err != nil {
-		return err
-	}
+	eventType := messageEventType(msg.Headers)
 
 	switch eventType {
 	case customerCreatedEventType:
@@ -137,16 +131,14 @@ func (c *KafkaConsumer) handleCustomerEvent(ctx context.Context, msg kafka.Messa
 	}
 }
 
-func messageEventType(value []byte) (string, error) {
-	var envelope struct {
-		EventType string `json:"event_type"`
+func messageEventType(headers []kafka.Header) string {
+	for _, header := range headers {
+		if header.Key == "event_type" {
+			return string(header.Value)
+		}
 	}
 
-	if err := json.Unmarshal(value, &envelope); err != nil {
-		return "", err
-	}
-
-	return envelope.EventType, nil
+	return ""
 }
 
 func (c *KafkaConsumer) handleOrderCreated(ctx context.Context, msg kafka.Message) error {

@@ -23,7 +23,6 @@ func NewOutboxEventPublisher(db *db.Provider) *OutboxEventPublisher {
 func (p *OutboxEventPublisher) PublishOrderCreated(ctx context.Context, event entities.OrderCreatedEvent) error {
 	payload, err := json.Marshal(orderCreatedPayload{
 		EventID:    event.ID(),
-		EventType:  event.Type(),
 		OrderID:    event.OrderID(),
 		CustomerID: event.CustomerID(),
 		Items:      newOrderCreatedItemPayloads(event.Items()),
@@ -72,7 +71,6 @@ func newOrderCreatedItemPayloads(items []entities.OrderCreatedEventItem) []order
 
 type orderCreatedPayload struct {
 	EventID    uuid.UUID                 `json:"event_id"`
-	EventType  string                    `json:"event_type"`
 	OrderID    uuid.UUID                 `json:"order_id"`
 	CustomerID string                    `json:"customer_id"`
 	Items      []orderCreatedItemPayload `json:"items"`

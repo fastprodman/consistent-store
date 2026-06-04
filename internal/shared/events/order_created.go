@@ -8,7 +8,6 @@ import (
 
 type OrderCreated struct {
 	EventID    uuid.UUID          `json:"event_id"`
-	EventType  string             `json:"event_type"`
 	OrderID    uuid.UUID          `json:"order_id"`
 	CustomerID string             `json:"customer_id"`
 	Items      []OrderCreatedItem `json:"items"`
