@@ -34,7 +34,8 @@ func main() {
 
 	provider := db.NewProvider(database, txStore)
 	notifier := notificationout.NewNotifier(provider)
-	handler := notificationservices.NewService(notifier)
+	eventPublisher := notificationout.NewOutboxEventPublisher(provider)
+	handler := notificationservices.NewService(txStore, notifier, eventPublisher)
 	consumer := notificationin.NewKafkaConsumer(broker, handler)
 	defer consumer.Close()
 

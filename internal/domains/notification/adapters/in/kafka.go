@@ -16,6 +16,10 @@ import (
 const (
 	orderEventsTopic    = "order.events"
 	customerEventsTopic = "customer.events"
+
+	orderCreatedEventType          = "OrderCreated"
+	orderNotificationSentEventType = "OrderNotificationSent"
+	customerCreatedEventType       = "CustomerCreated"
 )
 
 type eventHandler interface {
@@ -91,13 +95,58 @@ func (c *KafkaConsumer) Run(ctx context.Context) {
 func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) error {
 	switch msg.Topic {
 	case orderEventsTopic:
-		return c.handleOrderCreated(ctx, msg)
+		return c.handleOrderEvent(ctx, msg)
 	case customerEventsTopic:
-		return c.handleCustomerCreated(ctx, msg)
+		return c.handleCustomerEvent(ctx, msg)
 	default:
 		log.Printf("notification service ignored message from unexpected topic: topic=%s", msg.Topic)
 		return nil
 	}
+}
+
+func (c *KafkaConsumer) handleOrderEvent(ctx context.Context, msg kafka.Message) error {
+	eventType, err := messageEventType(msg.Value)
+	if err != nil {
+		return err
+	}
+
+	switch eventType {
+	case orderCreatedEventType:
+		return c.handleOrderCreated(ctx, msg)
+	case orderNotificationSentEventType:
+		log.Printf("notification service ignored event: topic=%s event_type=%s", msg.Topic, eventType)
+		return nil
+	default:
+		log.Printf("notification service ignored unknown order event: topic=%s event_type=%s", msg.Topic, eventType)
+		return nil
+	}
+}
+
+func (c *KafkaConsumer) handleCustomerEvent(ctx context.Context, msg kafka.Message) error {
+	eventType, err := messageEventType(msg.Value)
+	if err != nil {
+		return err
+	}
+
+	switch eventType {
+	case customerCreatedEventType:
+		return c.handleCustomerCreated(ctx, msg)
+	default:
+		log.Printf("notification service ignored unknown customer event: topic=%s event_type=%s", msg.Topic, eventType)
+		return nil
+	}
+}
+
+func messageEventType(value []byte) (string, error) {
+	var envelope struct {
+		EventType string `json:"event_type"`
+	}
+
+	if err := json.Unmarshal(value, &envelope); err != nil {
+		return "", err
+	}
+
+	return envelope.EventType, nil
 }
 
 func (c *KafkaConsumer) handleOrderCreated(ctx context.Context, msg kafka.Message) error {
