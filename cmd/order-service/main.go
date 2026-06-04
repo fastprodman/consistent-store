@@ -8,6 +8,9 @@ import (
 	"os"
 	"time"
 
+	customerhttp "github.com/fastprodman/consistent-store/internal/domains/customer/adapters/in"
+	customerout "github.com/fastprodman/consistent-store/internal/domains/customer/adapters/out"
+	customerservices "github.com/fastprodman/consistent-store/internal/domains/customer/services"
 	inventoryhttp "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/in"
 	inventoryout "github.com/fastprodman/consistent-store/internal/domains/inventory/adapters/out"
 	inventoryservices "github.com/fastprodman/consistent-store/internal/domains/inventory/services"
@@ -44,6 +47,8 @@ func main() {
 	inventoryReservationService := inventoryservices.NewReservationService(domainInventoryRepo)
 	orderRepo := orderout.NewRepository(provider)
 	orderEventPublisher := orderout.NewOutboxEventPublisher(provider)
+	customerRepo := customerout.NewRepository(provider)
+	customerService := customerservices.NewService(customerRepo)
 
 	orderService := orderservices.NewService(
 		txStore,
@@ -54,9 +59,11 @@ func main() {
 
 	orderHandler := orderhttp.NewHTTPHandler(orderService, orderRepo)
 	inventoryHandler := inventoryhttp.NewHTTPHandler(inventoryQueryService)
+	customerHandler := customerhttp.NewHTTPHandler(customerService)
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("POST /customers", customerHandler.CreateCustomer)
 	mux.HandleFunc("POST /orders", orderHandler.CreateOrder)
 	mux.HandleFunc("GET /orders/", orderHandler.GetOrder)
 	mux.HandleFunc("GET /inventory/", inventoryHandler.GetInventory)

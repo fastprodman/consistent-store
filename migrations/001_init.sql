@@ -7,9 +7,14 @@ CREATE TABLE inventory (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE customers (
+    id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE orders (
     id UUID PRIMARY KEY,
-    customer_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
     status TEXT NOT NULL,
     total_cents INT NOT NULL CHECK (total_cents >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -36,3 +41,7 @@ INSERT INTO inventory (sku, available_quantity, price_cents)
 VALUES 
     ('BOOK-001', 10, 1500),
     ('LAPTOP-001', 3, 120000);
+
+INSERT INTO customers (id)
+VALUES
+    ('customer-001');
