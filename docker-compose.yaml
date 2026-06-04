@@ -171,11 +171,11 @@ services:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: kafka-1:9092,kafka-2:9092,kafka-3:9092
 
-  order-notifier:
+  notification-service:
     build:
       context: .
-      dockerfile: cmd/order-notifier/Dockerfile
-    container_name: transactional-outbox-order-notifier
+      dockerfile: cmd/notification-service/Dockerfile
+    container_name: transactional-outbox-notification-service
     depends_on:
       postgres:
         condition: service_healthy

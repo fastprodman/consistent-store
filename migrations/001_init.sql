@@ -31,7 +31,7 @@ CREATE TABLE order_items (
 CREATE TABLE outbox_events (
     id UUID PRIMARY KEY,
     aggregate_type TEXT NOT NULL,
-    aggregate_id UUID NOT NULL,
+    aggregate_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
     payload JSON NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

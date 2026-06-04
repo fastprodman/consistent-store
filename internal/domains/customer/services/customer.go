@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"github.com/fastprodman/consistent-store/internal/domains/customer/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/customer/ports/in"
@@ -10,14 +11,22 @@ import (
 )
 
 type Service struct {
+	tx        portsout.TransactionManager
 	customers portsout.Repository
+	events    portsout.EventPublisher
 }
 
 var _ portsin.Service = (*Service)(nil)
 
-func NewService(customers portsout.Repository) *Service {
+func NewService(
+	tx portsout.TransactionManager,
+	customers portsout.Repository,
+	events portsout.EventPublisher,
+) *Service {
 	return &Service{
+		tx:        tx,
 		customers: customers,
+		events:    events,
 	}
 }
 
@@ -32,13 +41,29 @@ func (s *Service) CreateCustomer(ctx context.Context, cmd portsin.CreateCustomer
 		return "", err
 	}
 
-	created, err := s.customers.Create(ctx, customer)
+	err = s.tx.Exec(ctx, func(ctx context.Context) error {
+		created, err := s.customers.Create(ctx, customer)
+		if err != nil {
+			return err
+		}
+
+		if !created {
+			return ErrCustomerAlreadyExists
+		}
+
+		event, err := entities.NewCustomerCreatedEvent(
+			uuid.New(),
+			customer.ID(),
+			time.Now().UTC(),
+		)
+		if err != nil {
+			return err
+		}
+
+		return s.events.PublishCustomerCreated(ctx, event)
+	})
 	if err != nil {
 		return "", err
-	}
-
-	if !created {
-		return "", ErrCustomerAlreadyExists
 	}
 
 	return customer.ID(), nil

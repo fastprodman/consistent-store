@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 
-	"github.com/fastprodman/consistent-store/internal/domains/ordernotifier/entities"
-	portsout "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/ports/out"
+	"github.com/fastprodman/consistent-store/internal/domains/notification/entities"
+	portsout "github.com/fastprodman/consistent-store/internal/domains/notification/ports/out"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
 )
 
@@ -51,4 +52,14 @@ func (n *Notifier) NotifyOrderCreated(
 	}
 
 	return didInsert, nil
+}
+
+func (n *Notifier) NotifyCustomerCreated(ctx context.Context, event entities.CustomerCreatedEvent) error {
+	log.Printf(
+		"customer notification sent: event_id=%s customer_id=%s",
+		event.EventID(),
+		event.CustomerID(),
+	)
+
+	return nil
 }

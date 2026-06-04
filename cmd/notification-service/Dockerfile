@@ -6,13 +6,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/order-notifier ./cmd/order-notifier
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/notification-service ./cmd/notification-service
 
 FROM alpine:3.21
 
 RUN adduser -D -H appuser
 USER appuser
 
-COPY --from=build /out/order-notifier /app
+COPY --from=build /out/notification-service /app
 
 ENTRYPOINT ["/app"]

@@ -7,23 +7,33 @@ import (
 	"log"
 	"strings"
 
-	"github.com/fastprodman/consistent-store/internal/domains/ordernotifier/entities"
-	portsin "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/ports/in"
+	"github.com/fastprodman/consistent-store/internal/domains/notification/entities"
+	portsin "github.com/fastprodman/consistent-store/internal/domains/notification/ports/in"
 	"github.com/fastprodman/consistent-store/internal/shared/events"
 	"github.com/segmentio/kafka-go"
 )
 
-type KafkaConsumer struct {
-	reader  *kafka.Reader
-	handler portsin.OrderCreatedHandler
+const (
+	orderEventsTopic    = "order.events"
+	customerEventsTopic = "customer.events"
+)
+
+type eventHandler interface {
+	portsin.OrderCreatedHandler
+	portsin.CustomerCreatedHandler
 }
 
-func NewKafkaConsumer(broker string, handler portsin.OrderCreatedHandler) *KafkaConsumer {
+type KafkaConsumer struct {
+	reader  *kafka.Reader
+	handler eventHandler
+}
+
+func NewKafkaConsumer(broker string, handler eventHandler) *KafkaConsumer {
 	return &KafkaConsumer{
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:        brokersFromString(broker),
-			Topic:          "order.events",
-			GroupID:        "order-notifier",
+			GroupTopics:    []string{orderEventsTopic, customerEventsTopic},
+			GroupID:        "notification-service",
 			MinBytes:       1,
 			MaxBytes:       10e6,
 			CommitInterval: 0,
@@ -52,13 +62,13 @@ func (c *KafkaConsumer) Close() error {
 }
 
 func (c *KafkaConsumer) Run(ctx context.Context) {
-	log.Println("order notifier started")
+	log.Println("notification service started")
 
 	for {
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				log.Println("order notifier stopped")
+				log.Println("notification service stopped")
 				return
 			}
 
@@ -79,6 +89,18 @@ func (c *KafkaConsumer) Run(ctx context.Context) {
 }
 
 func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) error {
+	switch msg.Topic {
+	case orderEventsTopic:
+		return c.handleOrderCreated(ctx, msg)
+	case customerEventsTopic:
+		return c.handleCustomerCreated(ctx, msg)
+	default:
+		log.Printf("notification service ignored message from unexpected topic: topic=%s", msg.Topic)
+		return nil
+	}
+}
+
+func (c *KafkaConsumer) handleOrderCreated(ctx context.Context, msg kafka.Message) error {
 	var payload events.OrderCreated
 
 	if err := json.Unmarshal(msg.Value, &payload); err != nil {
@@ -111,6 +133,28 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 		)
 	} else {
 		log.Printf("duplicate order notification ignored: event_id=%s", event.EventID())
+	}
+
+	return nil
+}
+
+func (c *KafkaConsumer) handleCustomerCreated(ctx context.Context, msg kafka.Message) error {
+	var payload events.CustomerCreated
+
+	if err := json.Unmarshal(msg.Value, &payload); err != nil {
+		return err
+	}
+
+	event, err := entities.NewCustomerCreatedEvent(
+		payload.EventID,
+		payload.CustomerID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := c.handler.HandleCustomerCreated(ctx, event); err != nil {
+		return err
 	}
 
 	return nil

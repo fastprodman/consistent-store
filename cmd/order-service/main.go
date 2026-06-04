@@ -48,7 +48,12 @@ func main() {
 	orderRepo := orderout.NewRepository(provider)
 	orderEventPublisher := orderout.NewOutboxEventPublisher(provider)
 	customerRepo := customerout.NewRepository(provider)
-	customerService := customerservices.NewService(customerRepo)
+	customerEventPublisher := customerout.NewOutboxEventPublisher(provider)
+	customerService := customerservices.NewService(
+		txStore,
+		customerRepo,
+		customerEventPublisher,
+	)
 
 	orderService := orderservices.NewService(
 		txStore,

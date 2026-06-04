@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	notifierin "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/adapters/in"
-	notifierout "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/adapters/out"
-	notifierservices "github.com/fastprodman/consistent-store/internal/domains/ordernotifier/services"
+	notificationin "github.com/fastprodman/consistent-store/internal/domains/notification/adapters/in"
+	notificationout "github.com/fastprodman/consistent-store/internal/domains/notification/adapters/out"
+	notificationservices "github.com/fastprodman/consistent-store/internal/domains/notification/services"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
@@ -33,9 +33,9 @@ func main() {
 	})
 
 	provider := db.NewProvider(database, txStore)
-	notifier := notifierout.NewNotifier(provider)
-	handler := notifierservices.NewOrderCreatedHandler(notifier)
-	consumer := notifierin.NewKafkaConsumer(broker, handler)
+	notifier := notificationout.NewNotifier(provider)
+	handler := notificationservices.NewService(notifier)
+	consumer := notificationin.NewKafkaConsumer(broker, handler)
 	defer consumer.Close()
 
 	consumer.Run(ctx)
