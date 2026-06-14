@@ -18,12 +18,24 @@ import (
 	orderout "github.com/fastprodman/consistent-store/internal/domains/order/adapters/out"
 	orderservices "github.com/fastprodman/consistent-store/internal/domains/order/services"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
+	"github.com/fastprodman/consistent-store/internal/shared/observability"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	shutdownTracing, err := observability.InitTracing(ctx, "order-service")
+	if err != nil {
+		log.Fatal("init tracing:", err)
+	}
+	defer func() {
+		if err := shutdownTracing(context.Background()); err != nil {
+			log.Println("shutdown tracing:", err)
+		}
+	}()
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -68,9 +80,18 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /customers", customerHandler.CreateCustomer)
-	mux.HandleFunc("POST /orders", orderHandler.CreateOrder)
-	mux.HandleFunc("GET /orders/", orderHandler.GetOrder)
+	mux.Handle("POST /customers", otelhttp.NewHandler(
+		http.HandlerFunc(customerHandler.CreateCustomer),
+		"POST /customers",
+	))
+	mux.Handle("POST /orders", otelhttp.NewHandler(
+		http.HandlerFunc(orderHandler.CreateOrder),
+		"POST /orders",
+	))
+	mux.Handle("GET /orders/", otelhttp.NewHandler(
+		http.HandlerFunc(orderHandler.GetOrder),
+		"GET /orders/{id}",
+	))
 	mux.HandleFunc("GET /inventory/", inventoryHandler.GetInventory)
 
 	server := &http.Server{

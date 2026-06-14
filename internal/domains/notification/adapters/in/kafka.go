@@ -11,7 +11,12 @@ import (
 	"github.com/fastprodman/consistent-store/internal/domains/notification/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/notification/ports/in"
 	"github.com/fastprodman/consistent-store/internal/shared/events"
+	"github.com/fastprodman/consistent-store/internal/shared/observability"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -131,7 +136,15 @@ func (c *KafkaConsumer) handleOrderEvent(ctx context.Context, msg kafka.Message)
 
 	switch eventType {
 	case orderCreatedEventType:
-		return c.handleOrderCreated(ctx, msg)
+		ctx, span := startConsumerSpan(ctx, msg, "notification-service-order", eventType)
+		defer span.End()
+
+		if err := c.handleOrderCreated(ctx, msg); err != nil {
+			recordSpanError(span, err)
+			return err
+		}
+
+		return nil
 	case orderNotificationSentEventType:
 		log.Printf("notification service ignored event: topic=%s event_type=%s", msg.Topic, eventType)
 		return nil
@@ -146,7 +159,15 @@ func (c *KafkaConsumer) handleCustomerEvent(ctx context.Context, msg kafka.Messa
 
 	switch eventType {
 	case customerCreatedEventType:
-		return c.handleCustomerCreated(ctx, msg)
+		ctx, span := startConsumerSpan(ctx, msg, "notification-service-customer", eventType)
+		defer span.End()
+
+		if err := c.handleCustomerCreated(ctx, msg); err != nil {
+			recordSpanError(span, err)
+			return err
+		}
+
+		return nil
 	default:
 		log.Printf("notification service ignored unknown customer event: topic=%s event_type=%s", msg.Topic, eventType)
 		return nil
@@ -199,6 +220,42 @@ func (c *KafkaConsumer) handleOrderCreated(ctx context.Context, msg kafka.Messag
 	}
 
 	return nil
+}
+
+func startConsumerSpan(ctx context.Context, msg kafka.Message, groupID string, eventType string) (context.Context, trace.Span) {
+	ctx = observability.ContextFromMessageHeaders(ctx, newMessageHeaders(msg.Headers))
+
+	return otel.Tracer("notification.kafka").Start(
+		ctx,
+		"notification.consume "+eventType,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", msg.Topic),
+			attribute.String("messaging.kafka.consumer.group", groupID),
+			attribute.Int("messaging.kafka.partition", msg.Partition),
+			attribute.Int64("messaging.kafka.message.offset", msg.Offset),
+			attribute.String("event.type", eventType),
+		),
+	)
+}
+
+func recordSpanError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
+
+func newMessageHeaders(headers []kafka.Header) []observability.MessageHeader {
+	messageHeaders := make([]observability.MessageHeader, 0, len(headers))
+
+	for _, header := range headers {
+		messageHeaders = append(messageHeaders, observability.MessageHeader{
+			Key:   header.Key,
+			Value: header.Value,
+		})
+	}
+
+	return messageHeaders
 }
 
 func (c *KafkaConsumer) handleCustomerCreated(ctx context.Context, msg kafka.Message) error {

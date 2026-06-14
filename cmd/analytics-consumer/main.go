@@ -12,12 +12,23 @@ import (
 	analyticsout "github.com/fastprodman/consistent-store/internal/domains/analytics/adapters/out"
 	analyticsservices "github.com/fastprodman/consistent-store/internal/domains/analytics/services"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
+	"github.com/fastprodman/consistent-store/internal/shared/observability"
 	"github.com/fastprodman/consistent-store/pkg/sqltx"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracing, err := observability.InitTracing(ctx, "analytics-consumer")
+	if err != nil {
+		log.Fatal("init tracing:", err)
+	}
+	defer func() {
+		if err := shutdownTracing(context.Background()); err != nil {
+			log.Println("shutdown tracing:", err)
+		}
+	}()
 
 	dsn := getenv("DATABASE_URL", "postgres://app:app@localhost:5432/outbox_demo?sslmode=disable")
 	broker := getenv("KAFKA_BROKER", "localhost:19092")

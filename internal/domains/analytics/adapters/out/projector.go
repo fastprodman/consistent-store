@@ -9,6 +9,10 @@ import (
 	"github.com/fastprodman/consistent-store/internal/domains/analytics/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/analytics/ports/out"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const consumerName = "analytics-consumer"
@@ -27,6 +31,20 @@ func (p *Projector) ApplyOrderCreated(
 	ctx context.Context,
 	event entities.OrderCreatedEvent,
 ) (applied bool, err error) {
+	ctx, span := otel.Tracer("analytics.projector").Start(
+		ctx,
+		"analytics.project_order_statistics",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system", "postgresql"),
+			attribute.String("db.operation", "upsert"),
+			attribute.String("event.id", event.EventID().String()),
+			attribute.String("order.id", event.OrderID().String()),
+			attribute.Int("order.total_cents", event.TotalCents()),
+		),
+	)
+	defer span.End()
+
 	exec := p.db.Executor(ctx)
 
 	var didInsert bool
@@ -43,9 +61,11 @@ func (p *Projector) ApplyOrderCreated(
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			span.SetAttributes(attribute.Bool("analytics.applied", false))
 			return false, nil
 		}
 
+		recordSpanError(span, err)
 		return false, err
 	}
 
@@ -65,8 +85,14 @@ func (p *Projector) ApplyOrderCreated(
 	`, analyticsDate, event.TotalCents())
 
 	if err != nil {
+		recordSpanError(span, err)
 		return false, err
 	}
+
+	span.SetAttributes(
+		attribute.Bool("analytics.applied", true),
+		attribute.String("analytics.date", analyticsDate),
+	)
 
 	log.Printf(
 		"order analytics statistics updated: event_id=%s order_id=%s date=%s order_count_delta=1 revenue_cents_delta=%d",
@@ -77,4 +103,9 @@ func (p *Projector) ApplyOrderCreated(
 	)
 
 	return true, nil
+}
+
+func recordSpanError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }

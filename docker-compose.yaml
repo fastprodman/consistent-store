@@ -165,6 +165,28 @@ services:
     ports:
       - "8081:8080"
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: transactional-outbox-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.113.0
+    container_name: transactional-outbox-otel-collector
+    depends_on:
+      jaeger:
+        condition: service_started
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
   order-service:
     build:
       context: .
@@ -173,8 +195,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
     ports:
       - "8080:8080"
 
@@ -196,9 +221,12 @@ services:
         condition: service_completed_successfully
       debezium-init:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
 
   notification-service:
     build:
@@ -218,9 +246,12 @@ services:
         condition: service_completed_successfully
       debezium-init:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://app:app@postgres:5432/outbox_demo?sslmode=disable
       KAFKA_BROKER: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
 
   debezium-init:
     image: curlimages/curl:8.10.1

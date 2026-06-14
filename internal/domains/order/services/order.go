@@ -8,6 +8,10 @@ import (
 	portsin "github.com/fastprodman/consistent-store/internal/domains/order/ports/in"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/order/ports/out"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Service struct {
@@ -34,15 +38,28 @@ func NewService(
 }
 
 func (s *Service) CreateOrder(ctx context.Context, cmd portsin.CreateOrderCommand) (uuid.UUID, error) {
+	ctx, span := otel.Tracer("order.service").Start(
+		ctx,
+		"order.create",
+		trace.WithAttributes(
+			attribute.String("customer.id", cmd.CustomerID),
+			attribute.Int("order.item_count", len(cmd.Items)),
+		),
+	)
+	defer span.End()
+
 	if cmd.CustomerID == "" {
+		recordSpanError(span, ErrEmptyCustomerID)
 		return uuid.Nil, ErrEmptyCustomerID
 	}
 
 	if len(cmd.Items) == 0 {
+		recordSpanError(span, ErrEmptyItems)
 		return uuid.Nil, ErrEmptyItems
 	}
 
 	orderID := uuid.New()
+	span.SetAttributes(attribute.String("order.id", orderID.String()))
 
 	err := s.tx.Exec(ctx, func(ctx context.Context) error {
 		var totalCents int
@@ -96,8 +113,14 @@ func (s *Service) CreateOrder(ctx context.Context, cmd portsin.CreateOrderComman
 		))
 	})
 	if err != nil {
+		recordSpanError(span, err)
 		return uuid.Nil, err
 	}
 
 	return orderID, nil
+}
+
+func recordSpanError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }

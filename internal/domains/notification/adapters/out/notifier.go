@@ -9,6 +9,9 @@ import (
 	"github.com/fastprodman/consistent-store/internal/domains/notification/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/notification/ports/out"
 	"github.com/fastprodman/consistent-store/internal/shared/db"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Notifier struct {
@@ -25,6 +28,20 @@ func (n *Notifier) NotifyOrderCreated(
 	ctx context.Context,
 	event entities.OrderCreatedEvent,
 ) (notified bool, err error) {
+	ctx, span := otel.Tracer("notification.notifier").Start(
+		ctx,
+		"notification.notify_order_created",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system", "postgresql"),
+			attribute.String("db.operation", "insert"),
+			attribute.String("event.id", event.EventID().String()),
+			attribute.String("order.id", event.OrderID().String()),
+			attribute.String("customer.id", event.CustomerID()),
+		),
+	)
+	defer span.End()
+
 	// This adapter is where real SMS, email, or other notification providers
 	// could be called. In this lab it records the notification in the database.
 	exec := n.db.Executor(ctx)
@@ -45,11 +62,15 @@ func (n *Notifier) NotifyOrderCreated(
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			span.SetAttributes(attribute.Bool("notification.sent", false))
 			return false, nil
 		}
 
+		recordSpanError(span, err)
 		return false, err
 	}
+
+	span.SetAttributes(attribute.Bool("notification.sent", didInsert))
 
 	return didInsert, nil
 }

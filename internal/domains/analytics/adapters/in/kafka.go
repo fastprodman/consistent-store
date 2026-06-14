@@ -10,7 +10,12 @@ import (
 	"github.com/fastprodman/consistent-store/internal/domains/analytics/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/analytics/ports/in"
 	"github.com/fastprodman/consistent-store/internal/shared/events"
+	"github.com/fastprodman/consistent-store/internal/shared/observability"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -90,9 +95,13 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 		return nil
 	}
 
+	ctx, span := startConsumerSpan(ctx, msg, eventType)
+	defer span.End()
+
 	var payload events.OrderCreated
 
 	if err := json.Unmarshal(msg.Value, &payload); err != nil {
+		recordSpanError(span, err)
 		return err
 	}
 
@@ -103,11 +112,13 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 		payload.CreatedAt,
 	)
 	if err != nil {
+		recordSpanError(span, err)
 		return err
 	}
 
 	applied, err := c.handler.HandleOrderCreated(ctx, event)
 	if err != nil {
+		recordSpanError(span, err)
 		return err
 	}
 
@@ -125,6 +136,42 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 	}
 
 	return nil
+}
+
+func startConsumerSpan(ctx context.Context, msg kafka.Message, eventType string) (context.Context, trace.Span) {
+	ctx = observability.ContextFromMessageHeaders(ctx, newMessageHeaders(msg.Headers))
+
+	return otel.Tracer("analytics.kafka").Start(
+		ctx,
+		"analytics.consume "+eventType,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", msg.Topic),
+			attribute.String("messaging.kafka.consumer.group", "analytics-consumer"),
+			attribute.Int("messaging.kafka.partition", msg.Partition),
+			attribute.Int64("messaging.kafka.message.offset", msg.Offset),
+			attribute.String("event.type", eventType),
+		),
+	)
+}
+
+func recordSpanError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
+
+func newMessageHeaders(headers []kafka.Header) []observability.MessageHeader {
+	messageHeaders := make([]observability.MessageHeader, 0, len(headers))
+
+	for _, header := range headers {
+		messageHeaders = append(messageHeaders, observability.MessageHeader{
+			Key:   header.Key,
+			Value: header.Value,
+		})
+	}
+
+	return messageHeaders
 }
 
 func messageEventType(headers []kafka.Header) string {

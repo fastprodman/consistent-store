@@ -34,6 +34,8 @@ CREATE TABLE outbox_events (
     aggregate_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
     payload JSON NOT NULL,
+    traceparent TEXT,
+    tracestate TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
