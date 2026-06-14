@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/fastprodman/consistent-store/internal/domains/notification/entities"
 	portsin "github.com/fastprodman/consistent-store/internal/domains/notification/ports/in"
@@ -28,23 +29,32 @@ type eventHandler interface {
 }
 
 type KafkaConsumer struct {
-	reader  *kafka.Reader
-	handler eventHandler
+	orderReader    *kafka.Reader
+	customerReader *kafka.Reader
+	handler        eventHandler
 }
 
 func NewKafkaConsumer(broker string, handler eventHandler) *KafkaConsumer {
+	brokers := brokersFromString(broker)
+
 	return &KafkaConsumer{
-		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:        brokersFromString(broker),
-			GroupTopics:    []string{orderEventsTopic, customerEventsTopic},
-			GroupID:        "notification-service",
-			MinBytes:       1,
-			MaxBytes:       10e6,
-			CommitInterval: 0,
-			StartOffset:    kafka.FirstOffset,
-		}),
-		handler: handler,
+		orderReader:    newReader(brokers, orderEventsTopic, "notification-service-order"),
+		customerReader: newReader(brokers, customerEventsTopic, "notification-service-customer"),
+		handler:        handler,
 	}
+}
+
+func newReader(brokers []string, topic string, groupID string) *kafka.Reader {
+	return kafka.NewReader(kafka.ReaderConfig{
+		Brokers:               brokers,
+		Topic:                 topic,
+		GroupID:               groupID,
+		MinBytes:              1,
+		MaxBytes:              10e6,
+		CommitInterval:        0,
+		StartOffset:           kafka.FirstOffset,
+		WatchPartitionChanges: true,
+	})
 }
 
 func brokersFromString(value string) []string {
@@ -62,17 +72,41 @@ func brokersFromString(value string) []string {
 }
 
 func (c *KafkaConsumer) Close() error {
-	return c.reader.Close()
+	orderErr := c.orderReader.Close()
+	customerErr := c.customerReader.Close()
+
+	if orderErr != nil {
+		return orderErr
+	}
+
+	return customerErr
 }
 
 func (c *KafkaConsumer) Run(ctx context.Context) {
 	log.Println("notification service started")
 
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		c.runReader(ctx, c.orderReader, c.handleOrderEvent)
+	}()
+
+	go func() {
+		defer wg.Done()
+		c.runReader(ctx, c.customerReader, c.handleCustomerEvent)
+	}()
+
+	wg.Wait()
+	log.Println("notification service stopped")
+}
+
+func (c *KafkaConsumer) runReader(ctx context.Context, reader *kafka.Reader, handle func(context.Context, kafka.Message) error) {
 	for {
-		msg, err := c.reader.FetchMessage(ctx)
+		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				log.Println("notification service stopped")
 				return
 			}
 
@@ -80,27 +114,15 @@ func (c *KafkaConsumer) Run(ctx context.Context) {
 			continue
 		}
 
-		if err := c.handleMessage(ctx, msg); err != nil {
+		if err := handle(ctx, msg); err != nil {
 			log.Println("handle message:", err)
 			continue
 		}
 
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
+		if err := reader.CommitMessages(ctx, msg); err != nil {
 			log.Println("commit message:", err)
 			continue
 		}
-	}
-}
-
-func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) error {
-	switch msg.Topic {
-	case orderEventsTopic:
-		return c.handleOrderEvent(ctx, msg)
-	case customerEventsTopic:
-		return c.handleCustomerEvent(ctx, msg)
-	default:
-		log.Printf("notification service ignored message from unexpected topic: topic=%s", msg.Topic)
-		return nil
 	}
 }
 

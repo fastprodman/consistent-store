@@ -13,6 +13,11 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+const (
+	orderEventsTopic      = "order.events"
+	orderCreatedEventType = "OrderCreated"
+)
+
 type KafkaConsumer struct {
 	reader  *kafka.Reader
 	handler portsin.OrderCreatedHandler
@@ -22,7 +27,7 @@ func NewKafkaConsumer(broker string, handler portsin.OrderCreatedHandler) *Kafka
 	return &KafkaConsumer{
 		reader: kafka.NewReader(kafka.ReaderConfig{
 			Brokers:        brokersFromString(broker),
-			Topic:          "order.events",
+			Topic:          orderEventsTopic,
 			GroupID:        "analytics-consumer",
 			MinBytes:       1,
 			MaxBytes:       10e6,
@@ -79,6 +84,12 @@ func (c *KafkaConsumer) Run(ctx context.Context) {
 }
 
 func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) error {
+	eventType := messageEventType(msg.Headers)
+	if eventType != orderCreatedEventType {
+		log.Printf("analytics consumer ignored event: topic=%s event_type=%s", msg.Topic, eventType)
+		return nil
+	}
+
 	var payload events.OrderCreated
 
 	if err := json.Unmarshal(msg.Value, &payload); err != nil {
@@ -114,4 +125,14 @@ func (c *KafkaConsumer) handleMessage(ctx context.Context, msg kafka.Message) er
 	}
 
 	return nil
+}
+
+func messageEventType(headers []kafka.Header) string {
+	for _, header := range headers {
+		if header.Key == "event_type" {
+			return string(header.Value)
+		}
+	}
+
+	return ""
 }

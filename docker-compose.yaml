@@ -88,6 +88,31 @@ services:
       timeout: 10s
       retries: 20
 
+  kafka-topic-init:
+    image: apache/kafka:3.8.0
+    container_name: transactional-outbox-kafka-topic-init
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 \
+          --create --if-not-exists --topic order.events \
+          --partitions 3 --replication-factor 3 \
+          --config min.insync.replicas=2
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:9092,kafka-2:9092,kafka-3:9092 \
+          --create --if-not-exists --topic customer.events \
+          --partitions 3 --replication-factor 3 \
+          --config min.insync.replicas=2
+    restart: "no"
+
   kafka-connect:
     image: quay.io/debezium/connect:2.7
     container_name: transactional-outbox-connect
@@ -100,6 +125,8 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      kafka-topic-init:
+        condition: service_completed_successfully
     environment:
       BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
       GROUP_ID: transactional-outbox-connect
@@ -165,6 +192,8 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      kafka-topic-init:
+        condition: service_completed_successfully
       debezium-init:
         condition: service_completed_successfully
     environment:
@@ -185,6 +214,8 @@ services:
         condition: service_healthy
       kafka-3:
         condition: service_healthy
+      kafka-topic-init:
+        condition: service_completed_successfully
       debezium-init:
         condition: service_completed_successfully
     environment:

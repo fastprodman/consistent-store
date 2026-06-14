@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 
 	"github.com/fastprodman/consistent-store/internal/domains/analytics/entities"
 	portsout "github.com/fastprodman/consistent-store/internal/domains/analytics/ports/out"
@@ -66,6 +67,14 @@ func (p *Projector) ApplyOrderCreated(
 	if err != nil {
 		return false, err
 	}
+
+	log.Printf(
+		"order analytics statistics updated: event_id=%s order_id=%s date=%s order_count_delta=1 revenue_cents_delta=%d",
+		event.EventID(),
+		event.OrderID(),
+		analyticsDate,
+		event.TotalCents(),
+	)
 
 	return true, nil
 }
